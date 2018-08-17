@@ -3,6 +3,14 @@
 #include <string.h>
 #include "cpu.h"
 
+// Global branch table
+
+// Declare an array of 256 pointers to functions (each of which accepts a
+// pointer to a cpu and two unsigned char parameters and returns void),
+// initializing each to NULL:
+
+void (*branchtable[256])(struct cpu *cpu, unsigned char, unsigned char) = {0};
+
 /**
  * Push a value on the CPU stack
  */
@@ -83,75 +91,120 @@ void alu(struct cpu *cpu, enum alu_op op, unsigned char regA, unsigned char regB
  */
 void cpu_run(struct cpu *cpu)
 {
-  // Just so we don't have to type cpu-> every time
-  unsigned char *reg = cpu->reg;
   unsigned char *ram = cpu->ram;
 
-  int running = 1; // True until we get a HLT instruction
-
-  while (running) {
+  while (!cpu->halted) {
     unsigned char IR = ram[cpu->PC];
 
     unsigned char operandA = ram[(cpu->PC + 1) & 0xff];
     unsigned char operandB = ram[(cpu->PC + 2) & 0xff];
 
-    // True if this instruction might set the PC
-    int instruction_set_pc = (IR >> 4) & 1;
+    // Declare "handler", a pointer to a handler function:
+    void (*handler)(struct cpu*, unsigned char, unsigned char);
 
-    switch (IR) {
+    // Look it up in the branch table:
+    handler = branchtable[IR];
 
-      case LDI:
-        reg[operandA] = operandB;
-        break;
-
-      case PRN:
-        printf("%d\n", reg[operandA]);
-        break;
-
-      case MUL:
-        alu(cpu, ALU_MUL, operandA, operandB);
-        break;
-
-      case ADD:
-        alu(cpu, ALU_ADD, operandA, operandB);
-        break;
-
-      case HLT:
-        running = 0;
-        break;
-
-      case PRA:
-        printf("%c\n", reg[operandA]);
-        //printf("%c", reg[operandA]); fflush(stdout); // Without newline
-        break;
-
-      case CALL:
-        cpu_push(cpu, cpu->PC + 2);
-        cpu->PC = reg[operandA];
-        break;
-
-      case RET:
-        cpu->PC = cpu_pop(cpu);
-        break;
-
-      case PUSH:
-        cpu_push(cpu, reg[operandA]);
-        break;
-
-      case POP:
-        reg[operandA] = cpu_pop(cpu);
-        break;
-
-      default:
-        fprintf(stderr, "PC %02x: unknown instruction %02x\n", cpu->PC, IR);
-        exit(3);
+    if (handler == NULL) {
+      fprintf(stderr, "PC %02x: unknown instruction %02x\n", cpu->PC, IR);
+      exit(3);
     }
 
-    if (!instruction_set_pc) {
+    // True if this instruction might set the PC
+    cpu->inst_set_pc = (IR >> 4) & 1;
+
+    handler(cpu, operandA, operandB);
+
+    if (!cpu->inst_set_pc) {
       cpu->PC += ((IR >> 6) & 0x3) + 1;
     }
 
   }
+}
+
+void handle_LDI(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  cpu->reg[operandA] = operandB;
+}
+
+void handle_PRN(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  (void)operandB; // suppress unused variable warnings
+
+  printf("%d\n", cpu->reg[operandA]);
+}
+
+void handle_MUL(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  alu(cpu, ALU_MUL, operandA, operandB);
+}
+
+void handle_ADD(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  alu(cpu, ALU_ADD, operandA, operandB);
+}
+
+void handle_HLT(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  (void)operandA; // suppress unused variable warnings
+  (void)operandB;
+
+  cpu->halted = 1;
+}
+
+void handle_PRA(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  (void)operandB; // suppress unused variable warnings
+
+  printf("%c\n", cpu->reg[operandA]);
+  //printf("%c", cpu->reg[operandA]); fflush(stdout); // Without newline
+}
+
+void handle_CALL(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  (void)operandB; // suppress unused variable warnings
+
+  cpu_push(cpu, cpu->PC + 2);
+  cpu->PC = cpu->reg[operandA];
+}
+
+void handle_RET(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  (void)operandA; // suppress unused variable warnings
+  (void)operandB;
+
+  cpu->PC = cpu_pop(cpu);
+}
+
+void handle_PUSH(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  (void)operandB; // suppress unused variable warnings
+
+  cpu_push(cpu, cpu->reg[operandA]);
+}
+
+void handle_POP(struct cpu *cpu, unsigned char operandA, unsigned char operandB)
+{
+  (void)operandB; // suppress unused variable warnings
+
+  cpu->reg[operandA] = cpu_pop(cpu);
+}
+
+/**
+ * Initialize the branch table
+ */
+void init_branchtable(void)
+{
+  branchtable[LDI]  = handle_LDI;
+  branchtable[PRN]  = handle_PRN;
+  branchtable[MUL]  = handle_MUL;
+  branchtable[ADD]  = handle_ADD;
+  branchtable[HLT]  = handle_HLT;
+  branchtable[PRA]  = handle_PRA;
+  branchtable[CALL] = handle_CALL;
+  branchtable[RET]  = handle_RET;
+  branchtable[PUSH] = handle_PUSH;
+  branchtable[POP]  = handle_POP;
 }
 
 /**
@@ -167,4 +220,8 @@ void cpu_init(struct cpu *cpu)
 
   // Initialize SP
   cpu->reg[SP] = ADDR_EMPTY_STACK;
+
+  cpu->halted = 0;
+
+  init_branchtable();
 }

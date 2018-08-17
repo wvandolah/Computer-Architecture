@@ -6,6 +6,8 @@ struct cpu {
   unsigned char PC;
   unsigned char reg[8];
   unsigned char ram[256];
+  int halted; // True if a HLT instruction occurs
+  int inst_set_pc; // True if this instruction set the PC directly
 };
 
 // Special register values
