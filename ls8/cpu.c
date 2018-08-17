@@ -95,6 +95,9 @@ void cpu_run(struct cpu *cpu)
     unsigned char operandA = ram[(cpu->PC + 1) & 0xff];
     unsigned char operandB = ram[(cpu->PC + 2) & 0xff];
 
+    // True if this instruction might set the PC
+    int instruction_set_pc = (IR >> 4) & 1;
+
     switch (IR) {
 
       case LDI:
@@ -144,9 +147,7 @@ void cpu_run(struct cpu *cpu)
         exit(3);
     }
 
-    int instuction_set_pc = (IR >> 4) & 1;
-
-    if (!instuction_set_pc) {
+    if (!instruction_set_pc) {
       cpu->PC += ((IR >> 6) & 0x3) + 1;
     }
 
