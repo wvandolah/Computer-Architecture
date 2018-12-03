@@ -41,6 +41,9 @@ void cpu_load(struct cpu *cpu, char *filename)
     // https://www.tutorialspoint.com/c_standard_library/c_function_strtol.htm
     char *endptr;
     unsigned char lineToBin = strtol(lineOf, &endptr, 2);
+    if(lineOf == endptr){
+      continue;
+    }
     // printf("what is endptr:%s", endptr);
     // could use endptr to check if start of line is string and skip
     // printf("does end == line: %d\n", lineOf == endptr);
@@ -69,6 +72,12 @@ void alu(struct cpu *cpu, enum alu_op op, unsigned char regA, unsigned char regB
       break;
     case ALU_ADD:
       cpu->reg[regA] += cpu->reg[regB];
+    case ALU_CMP:
+      if(cpu->reg[regA] == cpu->reg[regB]){
+        cpu->FL |= 0b00000001;
+      }else{
+        cpu->FL &= ~0b00000001;
+      }
 
     // TODO: implement more ALU ops
   }
@@ -91,7 +100,7 @@ void cpu_run(struct cpu *cpu)
     unsigned char operandA = cpu_ram_read(cpu, cpu->PC + 1);
     unsigned char operandB = cpu_ram_read(cpu, cpu->PC + 2);
     unsigned char fromSP;
-    // printf("this is line| %d\n", IR);
+    printf("this is line| %d\n", cpu->PC);
     switch(IR){
       case LDI:
         cpu->reg[operandA] = operandB;
@@ -126,7 +135,24 @@ void cpu_run(struct cpu *cpu)
         fromSP = cpu_ram_read(cpu, cpu->reg[SP]);
         cpu->PC = fromSP;
         continue;
-
+      case CMP:
+        alu(cpu, ALU_CMP, operandA, operandB);
+        break;
+      case JMP:
+        cpu->PC = cpu->reg[operandA];
+        continue;
+      case JEQ:
+        if(cpu->FL & 0b00000001){
+          cpu->PC = cpu->reg[operandA];
+          continue;
+        }
+        break;
+      case JNE:
+        if(!(cpu->FL & 0b00000001)){
+          cpu->PC = cpu->reg[operandA];
+          continue;
+        }
+        break;
     }
     cpu->PC += 1 + (IR >> 6);
   }
